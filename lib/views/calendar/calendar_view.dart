@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:oasx/api/api_client.dart';
@@ -5,7 +6,9 @@ import 'package:oasx/views/nav/view_nav.dart';
 
 class ScriptCalendar extends StatefulWidget {
   final String script;
-  const ScriptCalendar({super.key, required this.script});
+  final Future<ApiResult<Map<String, dynamic>>> Function(String, String)?
+      loadCalendar;
+  const ScriptCalendar({super.key, required this.script, this.loadCalendar});
 
   @override
   State<ScriptCalendar> createState() => _ScriptCalendarState();
@@ -34,23 +37,39 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
       _loading = true;
       _error = null;
     });
-    final result =
-        await ApiClient().getScriptCalendar(widget.script, _dateKey(_week));
-    if (!mounted || id != _requestId) return;
-    setState(() {
-      _loading = false;
+    try {
+      final loader = widget.loadCalendar ?? ApiClient().getScriptCalendar;
+      final result = await loader(widget.script, _dateKey(_week))
+          .timeout(const Duration(seconds: 10));
       if (!result.isSuccess) {
-        _error = result.error;
-        return;
+        throw StateError(result.error ?? '无法读取脚本日历');
       }
-      _days = {};
+      final days = <String, List<Map<String, dynamic>>>{};
       for (final raw in result.data!['events'] as List) {
         final event = Map<String, dynamic>.from(raw);
         final date = (event['at'] as String).substring(0, 10);
-        (_days[date] ??= []).add(event);
+        (days[date] ??= []).add(event);
       }
-      _warnings = (result.data!['warnings'] as List).cast<String>();
-    });
+      final warnings = (result.data!['warnings'] as List).cast<String>();
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _days = days;
+        _warnings = warnings;
+      });
+    } catch (error) {
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _error = error is TimeoutException
+            ? '加载超时，后端暂未响应。请稍后重试。'
+            : '无法加载脚本日历：$error';
+      });
+    } finally {
+      if (mounted && id == _requestId) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
   }
 
   void _move(int offset) {

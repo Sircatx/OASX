@@ -192,7 +192,9 @@ class ApiClient {
     final res = await request(() => get(
       '/${Uri.encodeComponent(script)}/calendar',
       queryParameters: {'start': start},
-      options: const CacheOptions(store: null, policy: CachePolicy.noCache).toOptions(),
+      options: const CacheOptions(store: null, policy: CachePolicy.noCache).toOptions()
+        ..receiveTimeout = const Duration(seconds: 8)
+        ..sendTimeout = const Duration(seconds: 3),
     ));
     if (res.isSuccess && res.data is Map) {
       return ApiResult.success(Map<String, dynamic>.from(res.data));
