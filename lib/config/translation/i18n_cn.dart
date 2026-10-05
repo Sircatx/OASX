@@ -94,6 +94,7 @@ final Map<String, String> _cn_ui = {
 };
 
 final Map<String, String> _cn_menu = {
+  'ScriptCalendar': '脚本日历',
   I18n.overview: '总览',
   I18n.home: '主页',
   I18n.about: '关于',

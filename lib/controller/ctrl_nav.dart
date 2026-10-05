@@ -26,6 +26,11 @@ class NavCtrl extends GetxController {
     navNameList.value = await ApiClient().getConfigList();
     homeMenuJson.value = await ApiClient().getHomeMenu();
     scriptMenuJson.value = await ApiClient().getScriptMenu();
+    scriptMenuJson.value = {
+      'Overview': [],
+      'ScriptCalendar': [],
+      ...scriptMenuJson,
+    };
 
     super.onInit();
   }
@@ -89,7 +94,7 @@ class NavCtrl extends GetxController {
     selectedMenu.value = menu;
 
     // args的切换
-    if (['Home', 'Overview', 'Updater', 'Tool'].contains(menu)) {
+    if (['Home', 'Overview', 'ScriptCalendar', 'Updater', 'Tool'].contains(menu)) {
       return;
     }
     if (selectedScript.value == 'Home') {

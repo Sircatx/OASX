@@ -187,6 +187,19 @@ class ApiClient {
         MapEntry(k.toString(), (v as List).map((e) => e.toString()).toList()));
   }
 
+  Future<ApiResult<Map<String, dynamic>>> getScriptCalendar(
+      String script, String start) async {
+    final res = await request(() => get(
+      '/${Uri.encodeComponent(script)}/calendar',
+      queryParameters: {'start': start},
+      options: const CacheOptions(store: null, policy: CachePolicy.noCache).toOptions(),
+    ));
+    if (res.isSuccess && res.data is Map) {
+      return ApiResult.success(Map<String, dynamic>.from(res.data));
+    }
+    return ApiResult.failure(res.error ?? '无法读取脚本日历，请确认后端已更新');
+  }
+
   Future<Map<String, List<String>>> getHomeMenu() async {
     final res = await request(() => get('/home/home_menu'));
     return ((res.data ?? {}) as Map).map((k, v) =>
