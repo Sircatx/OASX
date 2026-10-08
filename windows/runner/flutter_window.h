@@ -5,6 +5,8 @@
 #include <flutter/flutter_view_controller.h>
 
 #include <memory>
+#include <windows.h>
+#include <shellapi.h>
 
 #include "win32_window.h"
 
@@ -23,6 +25,14 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  bool HideToTray(HWND window);
+  void RestoreFromTray(HWND window);
+  void RemoveTrayIcon();
+  NOTIFYICONDATAW tray_icon_{};
+  bool tray_visible_ = false;
+  bool restore_maximized_ = false;
+  const UINT taskbar_created_ = RegisterWindowMessageW(L"TaskbarCreated");
+
   // The project to run.
   flutter::DartProject project_;
 
