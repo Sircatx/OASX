@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:oasx/api/api_client.dart';
 import 'package:oasx/views/nav/view_nav.dart';
+import 'package:oasx/model/script_model.dart';
+import 'package:oasx/service/script_service.dart';
 
 class ScriptCalendar extends StatefulWidget {
   final String script;
+  final ScriptModel? runtimeModel;
   final Future<ApiResult<Map<String, dynamic>>> Function(String, String)?
       loadCalendar;
-  const ScriptCalendar({super.key, required this.script, this.loadCalendar});
+  const ScriptCalendar(
+      {super.key, required this.script, this.loadCalendar, this.runtimeModel});
 
   @override
   State<ScriptCalendar> createState() => _ScriptCalendarState();
@@ -23,19 +27,57 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
   bool _loading = true;
   String? _error;
   int _requestId = 0;
+  Timer? _refreshTimer;
+  Timer? _changeTimer;
+  Worker? _scheduleWorker;
+  bool _fetching = false;
+
+  ScriptModel? get _model =>
+      widget.runtimeModel ??
+      (Get.isRegistered<ScriptService>()
+          ? Get.find<ScriptService>().scriptModelMap[widget.script]
+          : null);
 
   @override
   void initState() {
     super.initState();
     _week = _weekStart(_now);
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!_fetching) _load(silent: true);
+    });
+    final model = _model;
+    if (model != null) {
+      _scheduleWorker = everAll([
+        model.state,
+        model.runningTask,
+        model.pendingTaskList,
+        model.waitingTaskList,
+      ], (_) {
+        _changeTimer?.cancel();
+        _changeTimer = Timer(const Duration(milliseconds: 400), () {
+          _load(silent: true);
+        });
+      });
+    }
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _changeTimer?.cancel();
+    _scheduleWorker?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
     final id = ++_requestId;
+    _fetching = true;
     setState(() {
-      _loading = true;
-      _error = null;
+      if (!silent) {
+        _loading = true;
+        _error = null;
+      }
     });
     try {
       final loader = widget.loadCalendar ?? ApiClient().getScriptCalendar;
@@ -47,6 +89,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
       final days = <String, List<Map<String, dynamic>>>{};
       for (final raw in result.data!['events'] as List) {
         final event = Map<String, dynamic>.from(raw);
+        _applyRuntime(event);
         final date = (event['at'] as String).substring(0, 10);
         (days[date] ??= []).add(event);
       }
@@ -55,6 +98,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
       setState(() {
         _days = days;
         _warnings = warnings;
+        _error = null;
       });
     } catch (error) {
       if (!mounted || id != _requestId) return;
@@ -65,10 +109,40 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
       });
     } finally {
       if (mounted && id == _requestId) {
+        _fetching = false;
         setState(() {
           _loading = false;
         });
       }
+    }
+  }
+
+  String _normalize(String name) => name.replaceAll('_', '').toLowerCase();
+
+  void _applyRuntime(Map<String, dynamic> event) {
+    if (event['kind'] != 'next' && event['kind'] != 'overdue') return;
+    final model = _model;
+    if (model == null || model.state.value != ScriptState.running) return;
+    final task = _normalize(event['task'] as String);
+    String? due;
+    if (_normalize(model.runningTask.value.taskName) == task) {
+      event['kind'] = 'running';
+      due = model.runningTask.value.nextRun;
+    } else if (model.pendingTaskList
+        .any((item) => _normalize(item.taskName) == task)) {
+      event['kind'] = 'pending';
+      due = model.pendingTaskList
+          .firstWhere((item) => _normalize(item.taskName) == task)
+          .nextRun;
+    } else if (model.waitingTaskList
+        .any((item) => _normalize(item.taskName) == task)) {
+      event['kind'] = 'waiting';
+    }
+    // Preserve the original due date, including with an older calendar backend.
+    final parsed = due == null ? null : DateTime.tryParse(due);
+    if (parsed != null && parsed.isBefore(_now)) {
+      event['original_due'] = due;
+      event['at'] = '${_dateKey(_now)} ${due!.substring(11)}';
     }
   }
 
@@ -88,6 +162,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
 
   String _taskKey(Map<String, dynamic> event) {
     final raw = event['task'] as String;
+    if (!Get.isRegistered<NavCtrl>()) return raw;
     final menus = Get.find<NavCtrl>().useablemenus;
     return menus.firstWhere(
         (menu) =>
@@ -100,11 +175,17 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
         'next' => '下一次',
         'weekly' => '每周计划',
         'overdue' => '待运行',
+        'running' => '运行中',
+        'pending' => '排队中 · 等待前序完成',
+        'waiting' => '等待中',
         _ => '预计',
       };
 
-  String _time(Map<String, dynamic> event) =>
-      (event['at'] as String).substring(11, 16);
+  String _time(Map<String, dynamic> event) {
+    final due = event['original_due'] as String?;
+    if (due != null) return '原定 ${due.substring(5, 16)}';
+    return (event['at'] as String).substring(11, 16);
+  }
 
   void _showDay(DateTime date) {
     final events = _days[_dateKey(date)] ?? [];
@@ -192,7 +273,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
           Text('${widget.script} · 北京时间 · 仅加载当前显示的 7 天',
               style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 4),
-          const Text('周期计划为预计时间；实际运行受队列、随机延迟和脚本开关影响。此视图为计划，不是运行记录。',
+          const Text('今天同步调度状态，每 15 秒自动刷新；积压任务标注原定日期，后续计划动态推算。预计时间受队列和随机延迟影响。',
               style: TextStyle(fontSize: 12)),
           const SizedBox(height: 16),
           if (_loading) const LinearProgressIndicator(),
