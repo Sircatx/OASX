@@ -103,6 +103,12 @@ class _ArgumentViewState extends State<ArgumentView> {
   @override
   Widget build(BuildContext context) {
     landscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    if (model.type == 'multi_enum') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [_title(), const SizedBox(height: 8), _form()],
+      ).padding(bottom: 8);
+    }
     if (landscape) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,7 +160,46 @@ class _ArgumentViewState extends State<ArgumentView> {
   }
 
   Widget _form() {
+    final colors = Theme.of(context).colorScheme;
+    final members = Get.find<ArgsController>()
+        .groupsData
+        .value[widget.getGroupName()]!
+        .members;
+    final weeklyEnabled = members
+        .whereType<ArgumentModel>()
+        .any((item) => item.title == 'weekly_enable' && item.value == true);
     return switch (model.type) {
+      "multi_enum" => Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: model.enumEnum!.map((option) {
+            final selected = List<String>.from(model.value as List);
+            final active = selected.contains(option);
+            return FilterChip(
+              label: Text(option.tr),
+              selected: active,
+              selectedColor: weeklyEnabled
+                  ? colors.secondaryContainer
+                  : colors.surfaceContainerHighest,
+              checkmarkColor: weeklyEnabled
+                  ? colors.onSecondaryContainer
+                  : colors.onSurfaceVariant,
+              onSelected: (enabled) {
+                if (!enabled && selected.length == 1) return;
+                if (enabled) {
+                  selected.add(option);
+                } else {
+                  selected.remove(option);
+                }
+                final ordered =
+                    model.enumEnum!.where(selected.contains).toList();
+                setState(() => model.value = ordered);
+                widget.setArgument("", "", widget.getGroupName(), model.title,
+                    'multi_enum', jsonEncode(ordered));
+              },
+            );
+          }).toList(),
+        ),
       "boolean" => Checkbox(value: model.value, onChanged: onCheckboxChanged)
           .alignment(Alignment.centerLeft)
           .constrained(width: landscape ? 200 : null),
@@ -233,6 +278,9 @@ class _ArgumentViewState extends State<ArgumentView> {
           "", "", widget.getGroupName(), model.title, 'boolean', value);
       model.value = value;
     });
+    if (model.title == 'weekly_enable') {
+      Get.find<ArgsController>().groupsData.refresh();
+    }
     showSnakbar(value);
   }
 
