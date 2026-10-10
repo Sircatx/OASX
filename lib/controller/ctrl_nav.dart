@@ -21,7 +21,7 @@ class NavCtrl extends GetxController {
     await ApiClient().putChineseTranslate();
     final additionalTranslate = await ApiClient().getAdditionalTranslate();
     if (additionalTranslate.isNotEmpty) {
-      Get.find<LocaleService>().saveAdditionalTranslate(additionalTranslate);
+      await Get.find<LocaleService>().saveAdditionalTranslate(additionalTranslate);
     }
 
     navNameList.value = await ApiClient().getConfigList();

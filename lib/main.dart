@@ -77,7 +77,11 @@ Future<void> initService() async {
   await GetStorage.init();
 
   await Future.wait([
-    Get.putAsync(() async => LocaleService()),
+    Get.putAsync(() async {
+      final service = LocaleService();
+      await service.loadMessage();
+      return service;
+    }),
     Get.putAsync(() async => ThemeService()),
     Get.putAsync(() async => WindowService()),
   ]);

@@ -18,7 +18,6 @@ class LocaleService extends GetxService with DynamicMessages {
 
   @override
   void onInit() {
-    loadMessage();
     language.value = _storage.read(StorageKey.language.name) ?? 'zh-CN';
     _updateLocale(language.value);
     super.onInit();
@@ -74,9 +73,25 @@ mixin DynamicMessages {
 
   Future<bool> saveAdditionalTranslate(
       Map<String, Map<String, String>> data) async {
-    await _saveAdditionalTranslate(data["zh-CN"]!, lang: 'zh-CN');
-    await _saveAdditionalTranslate(data["en-US"]!, lang: 'en-US');
+    applyAdditionalTranslate(data);
+    if (Get.locale != null) {
+      await Get.updateLocale(Get.locale!);
+    }
+    for (final lang in ['zh-CN', 'en-US']) {
+      final translations = data[lang];
+      if (translations != null) {
+        await _saveAdditionalTranslate(translations, lang: lang);
+      }
+    }
     return true;
+  }
+
+  void applyAdditionalTranslate(Map<String, Map<String, String>> data) {
+    for (final entry in data.entries) {
+      entry.value.forEach((key, value) =>
+          _messages.translateUpdate(key, value, locale: entry.key));
+    }
+    Get.addTranslations(_messages.keys);
   }
 
   Future<bool> _saveAdditionalTranslate(Map<String, String> data,
