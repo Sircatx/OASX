@@ -12,6 +12,7 @@ class NavCtrl extends GetxController {
     'Home': [],
     'Updater': [],
     'Tool': [],
+    '全局设置': [],
   }.obs;
   var scriptMenuJson = <String, List<String>>{}.obs;
 
@@ -24,7 +25,7 @@ class NavCtrl extends GetxController {
     }
 
     navNameList.value = await ApiClient().getConfigList();
-    homeMenuJson.value = await ApiClient().getHomeMenu();
+    homeMenuJson.value = {...await ApiClient().getHomeMenu(), '全局设置': []};
     scriptMenuJson.value = await ApiClient().getScriptMenu();
     scriptMenuJson.value = {
       'Overview': [],

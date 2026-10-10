@@ -4,6 +4,8 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
+#include "startup_settings.h"
+#include <flutter/standard_method_codec.h>
 
 namespace {
 constexpr UINT kTrayMessage = WM_APP + 1;
@@ -32,10 +34,37 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  // Migrate an enabled legacy Run registration to a shortcut with a working directory.
+  if (startup_settings::LaunchAtStartup()) startup_settings::SetLaunchAtStartup(true);
+  startup_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "oasx/startup",
+      &flutter::StandardMethodCodec::GetInstance());
+  startup_channel_->SetMethodCallHandler([](const auto& call, auto result) {
+    if (call.method_name() == "getSettings") {
+      result->Success(flutter::EncodableValue(flutter::EncodableMap{
+          {flutter::EncodableValue("launchAtStartup"), flutter::EncodableValue(startup_settings::LaunchAtStartup())},
+          {flutter::EncodableValue("startMinimized"), flutter::EncodableValue(startup_settings::StartMinimized())}}));
+      return;
+    }
+    const auto* enabled = call.arguments() ? std::get_if<bool>(call.arguments()) : nullptr;
+    if (!enabled) { result->Error("invalid_argument", "Expected a boolean"); return; }
+    LSTATUS status;
+    if (call.method_name() == "setLaunchAtStartup") {
+      status = startup_settings::SetLaunchAtStartup(*enabled);
+    } else if (call.method_name() == "setStartMinimized") {
+      status = startup_settings::SetStartMinimized(*enabled);
+    } else { result->NotImplemented(); return; }
+    if (status != ERROR_SUCCESS) {
+      result->Error("windows_error", "Unable to save startup setting", flutter::EncodableValue(static_cast<int>(status)));
+    } else { result->Success(); }
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
+    if (start_minimized_) {
+      HideToTray(GetHandle());
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -48,6 +77,7 @@ bool FlutterWindow::OnCreate() {
 
 void FlutterWindow::OnDestroy() {
   RemoveTrayIcon();
+  startup_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -93,6 +123,16 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
   // Handle tray messages before plugins can consume minimize notifications.
+  if (message == WM_CLOSE ||
+      (message == WM_SYSCOMMAND && (wparam & 0xfff0) == SC_CLOSE)) {
+    restore_maximized_ = IsZoomed(hwnd) != FALSE;
+    HideToTray(hwnd);
+    return 0;
+  }
+  if (restore_message_ != 0 && message == restore_message_) {
+    RestoreFromTray(hwnd);
+    return 0;
+  }
   if (taskbar_created_ != 0 && message == taskbar_created_ && tray_visible_) {
     tray_visible_ = false;
     if (!HideToTray(hwnd)) {
@@ -135,7 +175,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         if (command == kShowWindowCommand) {
           RestoreFromTray(hwnd);
         } else if (command == kExitCommand) {
-          PostMessage(hwnd, WM_CLOSE, 0, 0);
+          DestroyWindow(hwnd);
         }
       }
     }

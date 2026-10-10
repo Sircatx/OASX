@@ -16,7 +16,8 @@ import 'package:oasx/utils/platform_utils.dart';
 import 'package:oasx/controller/settings.dart';
 import 'package:oasx/config/theme.dart' show lightTheme, darkTheme;
 
-void main() async {
+void main(List<String> arguments) async {
+  WindowService.startMinimized = arguments.contains('--minimize');
   WidgetsFlutterBinding.ensureInitialized();
   await initService();
 

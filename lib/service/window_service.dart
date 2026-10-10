@@ -7,6 +7,7 @@ import 'package:oasx/utils/platform_utils.dart';
 import 'package:window_manager/window_manager.dart';
 
 class WindowService extends GetxService with WindowListener {
+  static bool startMinimized = false;
   // ignore: unused_field
   final _storage = GetStorage();
 
@@ -22,8 +23,12 @@ class WindowService extends GetxService with WindowListener {
         titleBarStyle: TitleBarStyle.hidden,
       );
       windowManager.waitUntilReadyToShow(windowOptions, () async {
-        await windowManager.show();
-        await windowManager.focus();
+        if (startMinimized) {
+          await windowManager.minimize();
+        } else {
+          await windowManager.show();
+          await windowManager.focus();
+        }
       });
       windowManager.addListener(this);
     }
