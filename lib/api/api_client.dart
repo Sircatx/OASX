@@ -100,6 +100,32 @@ class ApiClient {
   }
 
 // ----------------------------------   杂接口  --------------------------------------------
+  Future<bool?> gameRunning(String configName) async {
+    try {
+      final response = await NetOptions.instance.dio.get('/home/game_status',
+          queryParameters: {'config_name': configName},
+          options: Options(receiveTimeout: const Duration(seconds: 3), extra: {
+            ...const CacheOptions(store: null, policy: CachePolicy.noCache).toExtra(),
+            'sensitive': true,
+          }));
+      return response.data['running'] == true;
+    } catch (_) {
+      return null; // Background refresh must not repeatedly show error snackbars.
+    }
+  }
+
+  Future<ApiResult<dynamic>> startGame(String configName) => request(() => post(
+        '/home/start_game',
+        data: {'config_name': configName},
+        options: Options(receiveTimeout: const Duration(minutes: 3)),
+      ));
+
+  Future<ApiResult<dynamic>> stopGame(String configName) => request(() => post(
+        '/home/stop_game',
+        data: {'config_name': configName},
+        options: Options(receiveTimeout: const Duration(minutes: 3)),
+      ));
+
   Future<bool> notifyTest(String setting, String title, String content) async {
     final res = await request(() => post(
           '/home/notify_test',

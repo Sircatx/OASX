@@ -10,6 +10,8 @@
 
 同 [OAS](https://github.com/runhey/OnmyojiAutoScript) 对接的全平台 GUI
 
+本分支总览页提供单行“游戏”卡片：启动后显示关闭按钮，可完整关闭游戏和模拟器，详见 [游戏控制说明](docs/game-controls.md)。
+
 </br>
 </div>
 
