@@ -279,6 +279,8 @@ class _SchedulerWidget extends StatelessWidget {
               ),
             ScriptState.inactive =>
               const Icon(Icons.donut_large, size: 26, color: Colors.grey),
+            ScriptState.paused =>
+              const Icon(Icons.pause_circle_outline, size: 26, color: Colors.orange),
             ScriptState.warning =>
               const SpinKitDoubleBounce(color: Colors.orange, size: 26),
             ScriptState.updating => const Icon(Icons.browser_updated_rounded,
@@ -287,10 +289,26 @@ class _SchedulerWidget extends StatelessWidget {
         }),
         Obx(() {
           return IconButton(
+            tooltip: controller.scriptModel.state.value == ScriptState.paused
+                ? '继续调度器' : '暂停调度器',
+            onPressed: controller.scriptModel.state.value == ScriptState.running ||
+                    controller.scriptModel.state.value == ScriptState.paused
+                ? () => controller.scriptService.togglePause(controller.name)
+                : null,
+            icon: Icon(controller.scriptModel.state.value == ScriptState.paused
+                ? Icons.play_arrow_rounded : Icons.pause_rounded),
+          );
+        }),
+        Obx(() {
+          return IconButton(
+            tooltip: controller.scriptModel.state.value == ScriptState.running ||
+                    controller.scriptModel.state.value == ScriptState.paused
+                ? '停止调度器' : '启动调度器',
             onPressed: () => {controller.toggleScript()},
             icon: const Icon(Icons.power_settings_new_rounded),
             isSelected:
-                controller.scriptModel.state.value == ScriptState.running,
+                controller.scriptModel.state.value == ScriptState.running ||
+                controller.scriptModel.state.value == ScriptState.paused,
           );
         }),
       ].toRow(mainAxisAlignment: MainAxisAlignment.center)

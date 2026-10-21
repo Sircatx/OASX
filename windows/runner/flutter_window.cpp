@@ -5,6 +5,7 @@
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
 #include "startup_settings.h"
+#include "utils.h"
 #include <flutter/standard_method_codec.h>
 
 namespace {
@@ -43,7 +44,17 @@ bool FlutterWindow::OnCreate() {
     if (call.method_name() == "getSettings") {
       result->Success(flutter::EncodableValue(flutter::EncodableMap{
           {flutter::EncodableValue("launchAtStartup"), flutter::EncodableValue(startup_settings::LaunchAtStartup())},
-          {flutter::EncodableValue("startMinimized"), flutter::EncodableValue(startup_settings::StartMinimized())}}));
+          {flutter::EncodableValue("startMinimized"), flutter::EncodableValue(startup_settings::StartMinimized())},
+          {flutter::EncodableValue("startupProfile"), flutter::EncodableValue(Utf8FromUtf16(startup_settings::StartupProfile().c_str()))}}));
+      return;
+    }
+    if (call.method_name() == "setStartupProfile") {
+      const auto* profile = call.arguments() ? std::get_if<std::string>(call.arguments()) : nullptr;
+      if (!profile) { result->Error("invalid_argument", "Expected a profile name"); return; }
+      const auto status = startup_settings::SetStartupProfile(*profile);
+      if (status != ERROR_SUCCESS) {
+        result->Error("windows_error", "Unable to save startup profile", flutter::EncodableValue(static_cast<int>(status)));
+      } else { result->Success(); }
       return;
     }
     const auto* enabled = call.arguments() ? std::get_if<bool>(call.arguments()) : nullptr;
@@ -125,8 +136,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   // Handle tray messages before plugins can consume minimize notifications.
   if (message == WM_CLOSE ||
       (message == WM_SYSCOMMAND && (wparam & 0xfff0) == SC_CLOSE)) {
-    restore_maximized_ = IsZoomed(hwnd) != FALSE;
-    HideToTray(hwnd);
+    DestroyWindow(hwnd);
     return 0;
   }
   if (restore_message_ != 0 && message == restore_message_) {

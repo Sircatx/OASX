@@ -126,6 +126,27 @@ class ApiClient {
         options: Options(receiveTimeout: const Duration(minutes: 3)),
       ));
 
+  Future<ApiResult<dynamic>> loadBarkSettings() => request(() => get(
+        '/home/bark_settings',
+        options: Options(extra: {
+          ...const CacheOptions(store: null, policy: CachePolicy.noCache)
+              .toExtra(),
+          'sensitive': true,
+        }),
+      ));
+
+  Future<ApiResult<dynamic>> saveBarkSettings(Map<String, dynamic> settings) =>
+      request(() => put('/home/bark_settings',
+          data: settings, options: Options(extra: {'sensitive': true})));
+
+  Future<ApiResult<dynamic>> testBarkSettings(
+          Map<String, dynamic> settings, String event) =>
+      request(() => post('/home/bark_test',
+          data: {'settings': settings, 'event': event},
+          options: Options(
+              receiveTimeout: const Duration(seconds: 15),
+              extra: {'sensitive': true})));
+
   Future<bool> notifyTest(String setting, String title, String content) async {
     final res = await request(() => post(
           '/home/notify_test',
@@ -180,8 +201,8 @@ class ApiClient {
   }
 
   Future<Map?> exportDiagnostic({String configName = ''}) async {
-    final res = await request(
-        () => get('/home/export_diagnostic', queryParameters: {'config_name': configName}));
+    final res = await request(() => get('/home/export_diagnostic',
+        queryParameters: {'config_name': configName}));
     if (res.isSuccess && res.data is Map) {
       return res.data as Map;
     }
@@ -216,16 +237,17 @@ class ApiClient {
   Future<ApiResult<Map<String, dynamic>>> getScriptCalendar(
       String script, String start) async {
     final res = await request(() => get(
-      '/${Uri.encodeComponent(script)}/calendar',
-      queryParameters: {'start': start},
-      options: const CacheOptions(store: null, policy: CachePolicy.noCache).toOptions()
-        ..receiveTimeout = const Duration(seconds: 8)
-        ..sendTimeout = const Duration(seconds: 3),
-    ));
+          '/${Uri.encodeComponent(script)}/calendar',
+          queryParameters: {'start': start},
+          options: const CacheOptions(store: null, policy: CachePolicy.noCache)
+              .toOptions()
+            ..receiveTimeout = const Duration(seconds: 8)
+            ..sendTimeout = const Duration(seconds: 3),
+        ));
     if (res.isSuccess && res.data is Map) {
       return ApiResult.success(Map<String, dynamic>.from(res.data));
     }
-    return ApiResult.failure(res.error ?? '无法读取脚本日历，请确认后端已更新');
+    return ApiResult.failure(res.error ?? '无法读取日历，请确认后端已更新');
   }
 
   Future<Map<String, List<String>>> getHomeMenu() async {
@@ -241,7 +263,11 @@ class ApiClient {
   }
 
   Future<List<String>> getScriptList() async {
-    final res = await request(() => get('/config_list'));
+    final res = await request(() => get('/config_list',
+        options: Options(
+            extra: const CacheOptions(store: null, policy: CachePolicy.noCache)
+                .toExtra())));
+    if (!res.isSuccess) throw StateError('无法读取任务方案列表');
     return [...(res.data?.cast<String>() ?? [])];
   }
 

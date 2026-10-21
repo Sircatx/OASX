@@ -84,7 +84,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
       final result = await loader(widget.script, _dateKey(_week))
           .timeout(const Duration(seconds: 10));
       if (!result.isSuccess) {
-        throw StateError(result.error ?? '无法读取脚本日历');
+        throw StateError(result.error ?? '无法读取日历');
       }
       final days = <String, List<Map<String, dynamic>>>{};
       for (final raw in result.data!['events'] as List) {
@@ -103,9 +103,8 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
     } catch (error) {
       if (!mounted || id != _requestId) return;
       setState(() {
-        _error = error is TimeoutException
-            ? '加载超时，后端暂未响应。请稍后重试。'
-            : '无法加载脚本日历：$error';
+        _error =
+            error is TimeoutException ? '加载超时，后端暂未响应。请稍后重试。' : '无法加载日历：$error';
       });
     } finally {
       if (mounted && id == _requestId) {
@@ -172,6 +171,9 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
   }
 
   String _label(Map<String, dynamic> event) => switch (event['kind']) {
+        'completed' => _normalize(event['task'] as String) == 'ryoutoppa'
+            ? '共战斗 ${event['completed_count']} 次'
+            : '已完成 ${event['completed_count']} 次',
         'next' => '下一次',
         'weekly' => '每周计划',
         'overdue' => '待运行',
@@ -180,6 +182,26 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
         'waiting' => '等待中',
         _ => '预计',
       };
+
+  Color _completedColor(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF81C784)
+          : const Color(0xFF256B2A);
+
+  String _summary(List<Map<String, dynamic>> events) {
+    final planned =
+        events.where((event) => event['kind'] != 'completed').length;
+    final completed = events
+        .where((event) => event['kind'] == 'completed' &&
+            _normalize(event['task'] as String) != 'ryoutoppa')
+        .fold<int>(0, (sum, event) => sum + (event['completed_count'] as int));
+    final battles = events
+        .where((event) => event['kind'] == 'completed' &&
+            _normalize(event['task'] as String) == 'ryoutoppa')
+        .fold<int>(0, (sum, event) => sum + (event['completed_count'] as int));
+    return '$planned 项计划${completed > 0 ? ' · 已完成 $completed 次' : ''}'
+        '${battles > 0 ? ' · 寮突破 $battles 战' : ''}';
+  }
 
   String _time(Map<String, dynamic> event) {
     final due = event['original_due'] as String?;
@@ -192,26 +214,36 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
     showDialog(
         context: context,
         builder: (dialogContext) => AlertDialog(
-              title: Text('${date.month}月${date.day}日 · ${events.length} 项计划'),
+              title: Text('${date.month}月${date.day}日 · ${_summary(events)}'),
               content: SizedBox(
                   width: 480,
                   height: 400,
                   child: events.isEmpty
-                      ? const Center(child: Text('当天没有已启用的任务计划'))
+                      ? const Center(child: Text('当天暂无任务计划或成功记录'))
                       : ListView.builder(
                           itemCount: events.length,
                           itemBuilder: (_, index) {
                             final event = events[index];
                             final task = _taskKey(event);
                             final float = event['float_time'];
+                            final completed = event['kind'] == 'completed';
+                            final green = _completedColor(context);
                             return ListTile(
+                              tileColor: completed
+                                  ? green.withValues(alpha: 0.1)
+                                  : null,
                               leading: Text(
                                   (event['at'] as String).substring(11),
-                                  style: const TextStyle(
+                                  style: TextStyle(
+                                      color: completed ? green : null,
                                       fontWeight: FontWeight.w600)),
-                              title: Text(task.tr),
+                              title: Text(task.tr,
+                                  style: TextStyle(
+                                      color: completed ? green : null)),
                               subtitle: Text(
-                                  '${_label(event)}${float != '00:00:00' ? ' · 随机延迟上限 $float' : ''}'),
+                                  '${_label(event)}${float != null && float != '00:00:00' ? ' · 随机延迟上限 $float' : ''}',
+                                  style: TextStyle(
+                                      color: completed ? green : null)),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () {
                                 Navigator.pop(dialogContext);
@@ -238,8 +270,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
               crossAxisAlignment: WrapCrossAlignment.center,
               spacing: 8,
               children: [
-                Text('脚本日历 · 周视图',
-                    style: Theme.of(context).textTheme.titleLarge),
+                Text('日历 · 周视图', style: Theme.of(context).textTheme.titleLarge),
                 IconButton(
                     tooltip: '上周',
                     onPressed:
@@ -265,7 +296,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
                     },
                     child: const Text('本周')),
                 IconButton(
-                    tooltip: '刷新计划',
+                    tooltip: '刷新日历',
                     onPressed: _load,
                     icon: const Icon(Icons.refresh)),
               ]),
@@ -273,7 +304,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
           Text('${widget.script} · 北京时间 · 仅加载当前显示的 7 天',
               style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 4),
-          const Text('今天同步调度状态，每 15 秒自动刷新；积压任务标注原定日期，后续计划动态推算。预计时间受队列和随机延迟影响。',
+          const Text('绿色显示每天成功执行次数；寮突破统计实际战斗次数（含胜负）。时间显示当天最后一次；每 15 秒自动刷新。',
               style: TextStyle(fontSize: 12)),
           const SizedBox(height: 16),
           if (_loading) const LinearProgressIndicator(),
@@ -337,7 +368,7 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
                         const SizedBox(height: 4),
                         Text('${date.month}月${date.day}日',
                             style: Theme.of(context).textTheme.titleMedium),
-                        Text('${events.length} 项计划',
+                        Text(_summary(events),
                             style: const TextStyle(fontSize: 11)),
                       ]))),
           const Divider(height: 1),
@@ -350,10 +381,15 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
                       itemBuilder: (context, index) {
                         final event = events[index];
                         final task = _taskKey(event);
+                        final completed = event['kind'] == 'completed';
+                        final green = _completedColor(context);
                         return InkWell(
                             onTap: () =>
                                 Get.find<NavCtrl>().switchContent(task),
-                            child: Padding(
+                            child: Container(
+                                color: completed
+                                    ? green.withValues(alpha: 0.1)
+                                    : null,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 9),
                                 child: Column(
@@ -364,16 +400,24 @@ class _ScriptCalendarState extends State<ScriptCalendar> {
                                           style: TextStyle(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 12,
-                                              color: event['kind'] == 'overdue'
-                                                  ? colors.error
-                                                  : colors.primary)),
+                                              color: completed
+                                                  ? green
+                                                  : event['kind'] == 'overdue'
+                                                      ? colors.error
+                                                      : colors.primary)),
                                       const SizedBox(height: 3),
                                       Text(task.tr,
-                                          style: const TextStyle(fontSize: 12)),
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: completed
+                                                  ? green
+                                                  : colors.onSurface)),
                                       Text(_label(event),
                                           style: TextStyle(
                                               fontSize: 10,
-                                              color: colors.onSurfaceVariant)),
+                                              color: completed
+                                                  ? green
+                                                  : colors.onSurfaceVariant)),
                                     ])));
                       })),
         ]));

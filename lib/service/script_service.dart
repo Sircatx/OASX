@@ -1,13 +1,17 @@
 import 'dart:convert';
+import 'package:flutter/services.dart';
 
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:oasx/api/api_client.dart';
 import 'package:oasx/model/script_model.dart';
 import 'package:oasx/service/websocket_service.dart';
+import 'package:oasx/service/startup_profile_runner.dart';
+import 'package:oasx/utils/platform_utils.dart';
 import 'package:oasx/views/overview/overview_view.dart';
 
 class ScriptService extends GetxService {
+  static final _startupRunner = StartupProfileRunner();
   // ignore: unused_field
   final _storage = GetStorage();
   final wsService = Get.find<WebSocketService>();
@@ -15,11 +19,35 @@ class ScriptService extends GetxService {
 
   @override
   Future<void> onInit() async {
-    final scriptList = await ApiClient().getScriptList();
-    if (scriptList.isNotEmpty) {
-      await Future.wait(scriptList.map((name) => connectScript(name)));
-    }
     super.onInit();
+    try {
+      final scriptList = await ApiClient().getScriptList();
+      if (scriptList.isNotEmpty) {
+        await Future.wait(scriptList.map((name) => connectScript(name)));
+      }
+      if (PlatformUtils.isWindows) {
+        await _startupRunner.run(
+          profiles: scriptList,
+          loadProfile: () async {
+            final settings = await const MethodChannel('oasx/startup')
+                .invokeMapMethod<String, dynamic>('getSettings');
+            return settings?['startupProfile'] as String? ?? '';
+          },
+          start: _startStartupProfile,
+        );
+      }
+    } catch (error) {
+      printError(info: 'Startup profile failed: $error');
+      Get.snackbar('启动后运行失败', error.toString());
+    }
+  }
+
+  Future<void> _startStartupProfile(String name) async {
+    final client = await wsService.connect(name: name);
+    final started = await startProfileIfIdle(client);
+    printInfo(
+        info:
+            'Startup profile ${started ? "started" : "already running"}: $name');
   }
 
   @override
@@ -86,6 +114,12 @@ class ScriptService extends GetxService {
   Future<void> stopScript(String name) async {
     if (!scriptModelMap.containsKey(name)) return;
     await wsService.send(name, 'stop');
+  }
+
+  Future<void> togglePause(String name) async {
+    final state = scriptModelMap[name]?.state.value;
+    if (state != ScriptState.running && state != ScriptState.paused) return;
+    await wsService.send(name, state == ScriptState.paused ? 'resume' : 'pause');
   }
 
   void addScriptModel(dynamic sm) {

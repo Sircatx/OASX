@@ -19,7 +19,8 @@ class OverviewController extends GetxController with LogMixin {
   }
 
   Future<void> toggleScript() async {
-    if (scriptModel.state.value != ScriptState.running) {
+    if (scriptModel.state.value != ScriptState.running &&
+        scriptModel.state.value != ScriptState.paused) {
       scriptService.startScript(name);
       clearLog();
     } else {

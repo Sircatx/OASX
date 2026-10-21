@@ -17,6 +17,9 @@ class ApiInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     options.extra[_startTimeKey] = DateTime.now().millisecondsSinceEpoch;
+    if (options.extra['sensitive'] == true) {
+      return super.onRequest(options, handler);
+    }
 
     final method = options.method;
     final uri = options.uri.toString();
@@ -32,6 +35,9 @@ class ApiInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
+    if (response.requestOptions.extra['sensitive'] == true) {
+      return super.onResponse(response, handler);
+    }
     final start = response.requestOptions.extra[_startTimeKey] as int?;
     final duration =
         start != null ? DateTime.now().millisecondsSinceEpoch - start : null;

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:oasx/api/api_client.dart';
 import 'package:oasx/utils/platform_utils.dart';
+import 'package:oasx/views/home/bark_settings_card.dart';
 
 class GlobalSettingsView extends StatefulWidget {
-  const GlobalSettingsView({super.key});
+  const GlobalSettingsView({super.key, this.loadProfiles, this.barkSettings});
+
+  final Future<List<String>> Function()? loadProfiles;
+  final Widget? barkSettings;
 
   @override
   State<GlobalSettingsView> createState() => _GlobalSettingsViewState();
@@ -13,6 +18,9 @@ class _GlobalSettingsViewState extends State<GlobalSettingsView> {
   static const _channel = MethodChannel('oasx/startup');
   bool _launchAtStartup = false;
   bool _startMinimized = false;
+  String _startupProfile = '';
+  List<String> _profiles = [];
+  String? _profilesError;
   bool _busy = true;
   String? _error;
 
@@ -36,8 +44,10 @@ class _GlobalSettingsViewState extends State<GlobalSettingsView> {
       setState(() {
         _launchAtStartup = values?['launchAtStartup'] == true;
         _startMinimized = values?['startMinimized'] == true;
+        _startupProfile = values?['startupProfile'] as String? ?? '';
         _error = null;
       });
+      await _loadProfiles();
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -53,7 +63,21 @@ class _GlobalSettingsViewState extends State<GlobalSettingsView> {
     }
   }
 
-  Future<void> _save(String method, bool value) async {
+  Future<void> _loadProfiles() async {
+    try {
+      final profiles =
+          await (widget.loadProfiles ?? ApiClient().getScriptList)();
+      if (!mounted) return;
+      setState(() {
+        _profiles = profiles.toSet().toList();
+        _profilesError = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _profilesError = '无法读取任务方案，请刷新重试。');
+    }
+  }
+
+  Future<void> _save(String method, Object value) async {
     setState(() {
       _busy = true;
     });
@@ -97,6 +121,48 @@ class _GlobalSettingsViewState extends State<GlobalSettingsView> {
                         : null,
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    title: const Text('启动后运行'),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('打开 OASX 后自动运行所选方案，下次启动生效。'),
+                        Row(children: [
+                          Expanded(
+                              child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: _startupProfile,
+                            items: [
+                              const DropdownMenuItem(
+                                  value: '', child: Text('不运行')),
+                              ..._profiles.map((name) => DropdownMenuItem(
+                                  value: name, child: Text(name))),
+                              if (_startupProfile.isNotEmpty &&
+                                  !_profiles.contains(_startupProfile))
+                                DropdownMenuItem(
+                                    value: _startupProfile,
+                                    child: Text('$_startupProfile（已不存在）')),
+                            ],
+                            onChanged: enabled && _profilesError == null
+                                ? (value) =>
+                                    _save('setStartupProfile', value ?? '')
+                                : null,
+                          )),
+                          IconButton(
+                            tooltip: '刷新任务方案',
+                            onPressed: enabled ? _loadProfiles : null,
+                            icon: const Icon(Icons.refresh),
+                          ),
+                        ]),
+                        if (_profilesError != null) Text(_profilesError!),
+                        if (_startupProfile.isNotEmpty &&
+                            !_profiles.contains(_startupProfile) &&
+                            _profilesError == null)
+                          const Text('此方案已不存在，下次启动时跳过，请重新选择。'),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
                   SwitchListTile(
                     title: const Text('最小化启动'),
                     subtitle: const Text('下次启动时收起到系统托盘，点击托盘图标可恢复窗口。'),
@@ -118,6 +184,8 @@ class _GlobalSettingsViewState extends State<GlobalSettingsView> {
                   TextButton(
                       onPressed: _busy ? null : _load, child: const Text('重试')),
                 ]),
+              const SizedBox(height: 24),
+              widget.barkSettings ?? const BarkSettingsCard(),
             ],
           ),
         ),

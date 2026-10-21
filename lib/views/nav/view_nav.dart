@@ -261,7 +261,8 @@ class Nav extends StatelessWidget {
       final wsService = Get.find<WebSocketService>();
       final scriptModel = Get.find<ScriptService>().findScriptModel(scriptName);
       if (scriptModel != null &&
-          scriptModel.state.value == ScriptState.running) {
+          (scriptModel.state.value == ScriptState.running ||
+           scriptModel.state.value == ScriptState.paused)) {
         Get.snackbar(I18n.tip.tr, I18n.config_update_tip.tr,
             duration: const Duration(milliseconds: 2000));
         return false;

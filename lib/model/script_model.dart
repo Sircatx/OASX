@@ -4,6 +4,7 @@ import 'package:oasx/views/overview/overview_view.dart';
 enum ScriptState {
   inactive,
   running,
+  paused,
   warning,
   updating,;
 
@@ -13,6 +14,7 @@ enum ScriptState {
       1 => running,
       2 => warning,
       3 => updating,
+      4 => paused,
       _ => inactive,
     };
   }

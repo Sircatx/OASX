@@ -78,6 +78,25 @@ inline LSTATUS SetStartMinimized(bool enabled) {
   return SetValue(kSettingsKey, L"StartMinimized", REG_DWORD, &value, sizeof(value));
 }
 
+inline std::wstring StartupProfile() {
+  wchar_t value[32768] = {};
+  DWORD size = sizeof(value);
+  if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"StartupProfile",
+                  RRF_RT_REG_SZ, nullptr, value, &size) != ERROR_SUCCESS) return L"";
+  return value;
+}
+
+inline LSTATUS SetStartupProfile(const std::string& profile) {
+  const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+      profile.c_str(), -1, nullptr, 0);
+  if (length == 0 || length > 32768) return ERROR_INVALID_PARAMETER;
+  std::wstring value(length, L'\0');
+  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, profile.c_str(), -1,
+                         value.data(), length) == 0) return ERROR_INVALID_PARAMETER;
+  return SetValue(kSettingsKey, L"StartupProfile", REG_SZ, value.c_str(),
+                  static_cast<DWORD>(length * sizeof(wchar_t)));
+}
+
 inline LSTATUS SetLaunchAtStartup(bool enabled) {
   const auto shortcut = StartupShortcut();
   if (shortcut.empty()) return ERROR_PATH_NOT_FOUND;
